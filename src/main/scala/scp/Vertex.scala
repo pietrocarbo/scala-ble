@@ -5,44 +5,40 @@ import org.apache.spark.rdd.RDD
 
 case class Vertex(vid: Int) extends Ordered[Vertex]{
 
-  private var in_edges: RDD[Edge] = _
-  private var out_edges: RDD[Edge] = _
+  var outlinks: Seq[Vertex] = Seq()
+  var inlinks: Seq[Vertex] = Seq()
+  def links(): Set[Vertex] = outlinks.toSet ++ inlinks.toSet
 
-  def get_in_edges(): RDD[Edge] = {
-    if (in_edges == null) throw new ExceptionInInitializerError("Incoming edges not set for this vertex")
-    else in_edges
-  }
-  def get_out_edges(): RDD[Edge] = {
-    if (out_edges == null) throw new ExceptionInInitializerError("Outgoing edges not set for this vertex")
-    else out_edges
-  }
-  def set_in_edges(inEdges: Seq[Edge]): Unit = {
-    inEdges.map(edge => {
-      if (edge.dst.vid != vid) {
-        throw new IllegalArgumentException("Setting a wrong incoming edge")
-        null
+  def outdegree: Int = outlinks.size
+  def indegree: Int = inlinks.size
+  def degree: Int = outdegree + indegree
+
+  def this(vid: Int, outNeighbours: Seq[Vertex], inNeighbours: Seq[Vertex]) {
+    this(vid)
+    outNeighbours.foreach(n => {
+      if (n.vid == vid) {
+        throw new IllegalArgumentException("Tried to set an outgoing self-edge!")
       }
     })
-    in_edges = SparkContext.getOrCreate().parallelize(inEdges)
-  }
-  def set_out_edges(outEdges: Seq[Edge]): Unit = {
-    outEdges.map(edge => {
-      if (edge.src.vid != vid) {
-        throw new IllegalArgumentException("Setting a wrong outgoing edge")
-        null
+    inNeighbours.foreach(n => {
+      if (n.vid == vid) {
+        throw new IllegalArgumentException("Tried to set an ingoing self-edge!")
       }
     })
-    out_edges = SparkContext.getOrCreate().parallelize(outEdges)
+    this.outlinks = outNeighbours
+    this.inlinks = inNeighbours
   }
 
-  def indgr: Long = in_edges.count()
-  def outdgr: Long = out_edges.count()
+  def outpairs(): Seq[(Vertex, Vertex)] = {
+//    .filter(vs => vs.forall(v => v.outdegree > this.outdegree))
+    links().toSeq.combinations(2).map{ case Seq(x, y) => (x, y) }.toSeq
+  }
 
-  def in_vertices: RDD[Vertex] = in_edges.map(x => x.src)
-  def out_vertices: RDD[Vertex] = out_edges.map(x => x.dst)
+  def is_connected(target: Vertex): Boolean = {
+    links().exists(v => v.vid == target.vid)
+  }
 
-  override def compare(that: Vertex): Int = this.vid - that.vid
-//  override def compare(that: Vertex): Int = (outdgr - that.outdgr).toInt
+  override def compare(that: Vertex): Int = outdegree - that.outdegree
 
   def canEqual(a: Any): Boolean = a.isInstanceOf[Vertex]
   override def equals(that: Any): Boolean =

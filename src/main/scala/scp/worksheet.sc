@@ -81,3 +81,13 @@
 //
 //
 //val r = new Vertex(1) == new Edge(new Vertex(1), new Vertex(2))
+
+Seq(
+  (1, Seq((2, 3), (3, 4))),
+  (2, Seq((5,4), (6, 3))),
+  (3, Seq((5, 6), (3,3)))
+).foreach(x => {
+  println(x._1)
+  x._2.foreach(xx =>
+    println(xx._1 + ", " + xx._2))
+})
