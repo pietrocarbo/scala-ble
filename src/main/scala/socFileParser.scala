@@ -1,6 +1,5 @@
-package scp
-
 import scala.io.Source
+
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 

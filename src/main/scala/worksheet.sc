@@ -1,3 +1,4 @@
+import scala.collection.mutable
 //"# Nodes: 75879 Edges: 508837".startsWith("#")
 //
 //import org.apache.spark.{SparkConf, SparkContext}
@@ -82,12 +83,26 @@
 //
 //val r = new Vertex(1) == new Edge(new Vertex(1), new Vertex(2))
 
-Seq(
-  (1, Seq((2, 3), (3, 4))),
-  (2, Seq((5,4), (6, 3))),
-  (3, Seq((5, 6), (3,3)))
-).foreach(x => {
-  println(x._1)
-  x._2.foreach(xx =>
-    println(xx._1 + ", " + xx._2))
-})
+//val a = Option(Seq(1, 2, 3))
+//val b = Option(None)
+//
+//a.map(_.map(x => x + 1))
+//b.map(x => x.isEmpty)
+//
+//1624481*3
+//
+////mutable.HashMap()
+//
+//4873443 / 3
+
+type OptionMap = Map[Symbol, Any]
+
+val om: OptionMap = Map('master -> "local[*]")
+
+om.contains('mast)
+
+val s = System.currentTimeMillis()
+Thread.sleep(2000)
+val e = System.currentTimeMillis()
+
+e-s

@@ -1,78 +1,72 @@
-package scp
-
-import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
 import java.io._
 
-sealed trait LinkDirection
-case object In extends LinkDirection
-case object Out extends LinkDirection
-case object Both extends LinkDirection
-
 class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 
-  val sc: SparkContext = SparkContext.getOrCreate()
+  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
 
-  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId), Vertex(dstId))}
+  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
+  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
+  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks).map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v))).sortBy(_._1.vid)
 
-  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst))).filter(x => x._2.nonEmpty).sortByKey()
-  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src))).filter(x => x._2.nonEmpty).sortByKey()
-  val links: RDD[(Vertex, Iterable[Vertex], Iterable[Vertex])] = outlinks.join(inlinks).map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
+  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid)
 
-  val vertices: RDD[Vertex] = links.map(x => new Vertex(x._1.vid, x._2.toSeq, x._3.toSeq))
-//  println(s"Action on vertices (count = ${vertices.count()})")
+  def print_links(links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])]) = {
+    links.collect().foreach({ x =>
+      print(s"links from ${x._1.vid} -> ")
+      x._2 match {
+        case Some(vs) => vs.foreach(o => print(s"${o.vid} "))
+        case None => ()
+      }
+      print("<- ")
+      x._3 match {
+        case Some(vs) => vs.foreach(i => print(s"${i.vid} "))
+        case None => ()
+      }
+      println()
+    })
+  }
 
-//  println(s"Summed outdgrees ${vertices.map(v => {v.outdgr}).reduce(_+_)}")
-//  println(s"Edges counted in Graph.scala is ${outlinks.map(x=>x._2.size).reduce((l1, l2)=> l1 + l2)}")
-
-//  println("Outlinks")
-//  var str = outlinks.map(e => s"${e._1.vid} -> " + s"${e._2.map(ed => ed.dst.vid)}")
-//  str.foreach(println)
-
-//  println("Inlinks")
-//  str = inlinks.map(e => s"${e._1.vid} -> " + s"${e._2.map(ed => ed.src.vid)}")
-//  str.foreach(println)
-
-  def saveAsTextFile(outputFile: String, linkType: LinkDirection): Unit = {
+  def saveAsTextFile(outputFile: String, linkType: EdgeDirection): Unit = {
     val graph_repr = linkType match {
-      case In => inlinks.map(v => {
+      case EdgeIn => inlinks.map(v => {
         s"${v._1.vid} -> (${v._2.map(in => in.vid)})"
       })
-      case Out => outlinks.map(v => {
+      case EdgeOut => outlinks.map(v => {
         s"${v._1.vid} -> (${v._2.map(out => out.vid)})"
       })
-      case Both => links.map(v => {
-        s"${v._1.vid} -> (${v._2.map(out => out.vid)}) <- (${v._3.map(in => in.vid)})"
+      case EdgeBoth => links.map(v => {
+        s"${v._3.map(vseq => vseq.toSeq.map(inv => inv.vid))} -> ${v._1.vid} -> ${v._2.map(vseq => vseq.toSeq.map(outv => outv.vid))}"
       })
     }
     FileUtils.deleteDirectory(new File(outputFile))
     graph_repr.repartition(1).saveAsTextFile(outputFile)
   }
 
-  def triangleCount(): Int = {
-    val vs = vertices.collect()
-    val triplets: Array[(Vertex, Seq[(Vertex, Vertex)])] = vs.map(v => (v, v.outpairs()))
-    triplets.foreach(x => {
-      print("vid " + x._1.vid + ": ")
-      x._2.foreach(xx => {
-        print(s"(${xx._1.vid}, ${xx._2.vid}) ")
-      })
-      println()
-    })
+  def triangleCount(linkType: EdgeDirection = EdgeBoth): Int = {
+    val vmap: collection.Map[Int, Vertex] = vertices.map(v => (v.vid, v)).collectAsMap()
+    val triplets: RDD[(Vertex, Seq[(Vertex, Vertex)])] = vertices.map(v => (v, v.outpairs(linkType)))
 
-    var count: Int = 0
-    triplets.foreach(x => {
-      x._2.foreach(xx => {
-        if (xx._1.is_connected(xx._2)) {
-          count += 1
-        } else {
-          println(s"No edge between ${xx._1.vid} and ${xx._2.vid}")
+    val tcount: Double = triplets.zipWithIndex.map(x => {
+//      if (x._2 % 100 == 0) println(s"count at vertex n. ${x._2}\n")
+      x._1._2.map(xx => {
+        if (vmap(xx._1.vid).is_connected(xx._2, linkType)) {
+          1
         }
-      })
-    })
+        else {
+//          println(s"No edge between ${xx._1.vid} and ${xx._2.vid}")
+          0
+        }
+      }).sum
+    }).sum
 
-    count
+    if (linkType == EdgeBoth) {
+      require(tcount >= 3 && tcount % 3 == 0, "Error counting triangles")  // 4873443 for Epinions
+      (tcount / 3).toInt
+    } else {
+      tcount.toInt
+    }
   }
 }
 
@@ -122,7 +116,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 //      .count()
 //    println(s"Considering ${links.count()} edges, Triangles count is $triCount")
 
-//    Triangle counting by sequential triples enumeration
+//    Triangle counting by sequential triplets enumeration
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
 //    val links = edges.groupByKey()
 //    println(trianglesCount(links.collect())) // 10^17 for Epinions!!
