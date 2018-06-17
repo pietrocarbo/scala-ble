@@ -17,8 +17,7 @@ A Scala based project to speriment map-reduce algorithms on big data (graph shap
         + `gcloud compute ssh battilanap@spark-cluster-m` 
         + `spark-submit scalasparkproject_2.11-0.1.jar --options`
     + Submit a Dataproc job (from the directory of your .jar):
-        + `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar scalasparkproject_2.11-0.1.jar -- --debug `
-            + 
+        + `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar scalasparkproject_2.11-0.1.jar -- --debug` 
 + Inspect or retrieve output files from the HDFS (while SSHed in master) `hadoop fs -ls /user/battilanap`
 
 ### Monitor execution
@@ -28,6 +27,9 @@ It can be done using the Web UIs of the GCP cluster. First setup SSH tunnelling:
 Then inside the Chrome browser enter URL:
 + `http://spark-cluster-m:8088` for YARN 
 + `http://spark-cluster-m:9870` for Hadoop 
+
+### YARN log aggregation
++ `yarn.log-aggregation-enable` and then `yarn logs -applicationId <app ID>`
 
 ### gcloud dataproc jobs submit log flags
 Verbosity of log4j is controlled by /etc/spark/conf/log4j.properties or overridden by the flag `--driver-log-levels root=FATAL,com.example=INF ...`
