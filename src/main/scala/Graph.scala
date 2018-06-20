@@ -2,6 +2,10 @@ import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
 import java.io._
 
+import org.apache.spark.rdd.RDD
+import org.apache.commons.io.FileUtils
+import java.io._
+
 class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 
   val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}

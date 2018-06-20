@@ -34,6 +34,15 @@ Then inside the Chrome browser enter URL:
 ### gcloud dataproc jobs submit log flags
 Verbosity of log4j is controlled by /etc/spark/conf/log4j.properties or overridden by the flag `--driver-log-levels root=FATAL,com.example=INF ...`
 
-## GCLOUD wide flags 
+### GCLOUD wide flags 
 + --verbosity=V   V::={debug, info, warning, error, none}
 + --user-output-enabled
+
+## Metrics
++ Epinions
+    + local[8]
+        + tcountv1: 69,25 min
+    + 1m4s (2vCPU/7.5GB RAM)
+        + tcountv1: 63 min
+      
+      
