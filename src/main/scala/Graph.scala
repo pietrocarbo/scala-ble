@@ -2,37 +2,20 @@ import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
 import java.io._
 
-import org.apache.spark.rdd.RDD
-import org.apache.commons.io.FileUtils
-import java.io._
-
 class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 
   val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
 
   val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
   val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
-  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks).map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v))).sortBy(_._1.vid)
 
-  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid)
+  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks)
+    .map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
+    .sortBy(_._1.vid).persist()
+  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
 
-  def print_links(links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])]) = {
-    links.collect().foreach({ x =>
-      print(s"links from ${x._1.vid} -> ")
-      x._2 match {
-        case Some(vs) => vs.foreach(o => print(s"${o.vid} "))
-        case None => ()
-      }
-      print("<- ")
-      x._3 match {
-        case Some(vs) => vs.foreach(i => print(s"${i.vid} "))
-        case None => ()
-      }
-      println()
-    })
-  }
 
-  def saveAsTextFile(outputFile: String, linkType: EdgeDirection): Unit = {
+  def saveAsTextFile(linkType: EdgeDirection, outputFile: String = "graph"): Unit = {
     val graph_repr = linkType match {
       case EdgeIn => inlinks.map(v => {
         s"${v._1.vid} -> (${v._2.map(in => in.vid)})"
@@ -46,6 +29,29 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
     }
     FileUtils.deleteDirectory(new File(outputFile))
     graph_repr.repartition(1).saveAsTextFile(outputFile)
+  }
+
+  def dynamicPageRank(errorRate: Double = 1e-6, outputFile: String = "pageRank"): Unit = {
+
+    val links = connections.groupByKey().persist()
+
+    var ranks = links.mapValues(v => 1.0)
+    var prevRanks = links.mapValues(v => 1.0)
+    var errRate = 1e-8
+
+    while (ranks.join(prevRanks).map{ case (v, (r, pr)) => r - pr <  errRate}.reduce(_&&_)) {
+      prevRanks = ranks.map(x => (x._1, x._2))
+
+      val contributions = links.join(ranks).flatMap {
+        case (u, (uLinks, rank)) =>
+          uLinks.map(t => (t, rank / uLinks.size))
+      }
+      ranks = contributions.reduceByKey((x,y) => x+y).
+        mapValues(v => 0.15 + 0.85*v)
+    }
+
+    FileUtils.deleteDirectory(new File(outputFile))
+    ranks.sortBy(_._2, ascending = false).repartition(1).saveAsTextFile(outputFile)
   }
 
   def triangleCount(linkType: EdgeDirection = EdgeBoth): Int = {
