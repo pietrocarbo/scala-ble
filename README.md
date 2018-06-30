@@ -1,5 +1,5 @@
 # Scala Spark project
-A Scala based project to speriment map-reduce algorithms on big data (graph shaped). The dependecies of the project (like Apache Spark) are resolved using sbt.
+A Scala - Spark based project to experiment with map-reduce algorithms on big data graph shaped. The dependencies and assembly for this project (like Apache Spark) are done using sbt.
 
 ## Google Cloud Platform
 
