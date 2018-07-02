@@ -2,7 +2,7 @@
 A Scala - Spark based project to experiment with map-reduce algorithms on big data graph shaped. The dependencies and assembly for this project (like Apache Spark) are done using sbt.
 
 ## Google Cloud Platform
-
+********
 ### Setup cluster
 + In Dataproc setup the configuration of the cluster (better in zones: europe-west-1/2/__3__) and run it
 + Download and install locally gcloud CLI tool:
