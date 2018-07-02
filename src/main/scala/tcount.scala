@@ -16,6 +16,7 @@ object tcount {
     val (nodes, cons) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/datasets/soc-Epinions1.txt").parseIntoRDDs()
     val connections = cons // .zipWithIndex().filter(x => x._2 <= 20).map(x => x._1)
 
+    // Counted 1624481 in 643.0 seconds
     val triplets = connections.map(x => (x._2, x._1))
       .join(connections)
       .flatMap(x => Seq((x._2._1, x),(x._2._2, x)))
