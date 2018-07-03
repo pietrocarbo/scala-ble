@@ -1,8 +1,8 @@
 # Scala Spark project
 A Scala - Spark based project to experiment with map-reduce algorithms on big data graph shaped. The dependencies and assembly for this project (like Apache Spark) are done using sbt.
 
-## Google Cloud Platform
-********
+## How to deploy MapReduce jobs on Google Cloud Platform clusters
+
 ### Setup cluster
 + In Dataproc setup the configuration of the cluster (better in zones: europe-west-1/2/__3__) and run it
 + Download and install locally gcloud CLI tool:
@@ -38,11 +38,12 @@ Verbosity of log4j is controlled by /etc/spark/conf/log4j.properties or overridd
 + --verbosity=V   V::={debug, info, warning, error, none}
 + --user-output-enabled
 
-## Metrics
-+ Epinions
+## Tested algorithms performance
++ soc-Epinions1
     + local[8]
-        + tcountv1: 69,25 min
+        + triangles_count_V1: 69,25 min
+        + triangles_count_V4: 643.0 seconds = 10,71 min
     + 1m4s (2vCPU/7.5GB RAM)
-        + tcountv1: 63 min
+        + triangles_count_V1: 63 min
       
       

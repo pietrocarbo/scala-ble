@@ -1,19 +1,26 @@
-type OptionMap = Map[Symbol, Any]
-var map: OptionMap = Map()
-//map = map ++ Map('debug -> true)
-//map = map ++ Map('parse -> true)
-//map = map ++ Map('dpr -> true)
-//map = map ++ Map('friends -> true)
-//map = map ++ Map('triangles -> true)
+//import org.apache.spark.storage.StorageLevel
+//import org.apache.spark.{SparkConf, SparkContext}
+//
+//val sc = new SparkContext(
+//  new SparkConf().setMaster("local[*]")
+//    .setAppName("BattilanaSparkApp"))
+//
+//val (nodes, connections) = (sc.parallelize(Seq(0, 1, 2, 3)),
+//  sc.parallelize(Seq(0 -> 1, 1 -> 2, 2 -> 3, 3 -> 0, 1 -> 3)))
+//
+//val conns: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
+//
+//val out = conns.groupBy(x => x._2)
+//  .map(x => (x._1, x._2.map(x => x._1)))
+//  .join(conns.groupByKey())
+//  .map(v => {
+//      s"${v._2._1.map(identity)} -> " +
+//      s"${v._1} -> " +
+//      s"${v._2._2.map(identity)}"
+//  })
+//
+//out.foreach(println(_))
+//
+//sc.stop()
 
-work(map.toList)
-
-def work(map: List[(Symbol, Any)]) {
-  map match {
-//    case ('debug, true) :: tail =>
-//      println("found pattern and do something")
-//      work(tail)
-    case _ =>
-      println("do all ops")
-  }
-}
+1.0f / Math.pow(10, 4)

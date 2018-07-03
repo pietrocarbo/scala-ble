@@ -2,7 +2,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
 import java.io._
 
-class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
+import org.apache.spark.storage.StorageLevel
+
+class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
+
+  var conns: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
   val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
 
@@ -14,69 +18,97 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
     .sortBy(_._1.vid).persist()
   val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
 
-
-  def saveAsTextFile(linkType: EdgeDirection, outputFile: String = "graph"): Unit = {
-    val graph_repr = linkType match {
-      case EdgeIn => inlinks.map(v => {
-        s"${v._1.vid} -> (${v._2.map(in => in.vid)})"
-      })
-      case EdgeOut => outlinks.map(v => {
-        s"${v._1.vid} -> (${v._2.map(out => out.vid)})"
-      })
-      case EdgeBoth => links.map(v => {
-        s"${v._3.map(vseq => vseq.toSeq.map(inv => inv.vid))} -> ${v._1.vid} -> ${v._2.map(vseq => vseq.toSeq.map(outv => outv.vid))}"
-      })
-    }
-    FileUtils.deleteDirectory(new File(outputFile))
-    graph_repr.repartition(1).saveAsTextFile(outputFile)
+  def allOps = {
+    trasform(EdgeBoth)
+    dynamicPageRank(8)
+    friendsRecommendations()
+    triangleCount()
   }
 
-  def dynamicPageRank(errorRate: Double = 1e-6, outputFile: String = "pageRank"): Unit = {
+  def saveDataAsTextFile(data: RDD[_], outputName: String, outputBase: String = "outputs"): Unit = {
+    FileUtils.deleteDirectory(new File(outputBase + outputName))
+    data.saveAsTextFile(outputBase + outputName)
+  }
 
-    val links = connections.groupByKey().persist()
+  def trasform(linkType: EdgeDirection, outputFolder: String = "trasformed"): Unit = {
 
-    var ranks = links.mapValues(v => 1.0)
-    var prevRanks = links.mapValues(v => 1.0)
-    var errRate = 1e-8
+    val (outputs, secs) = Timer.time({
+      val graph_repr = linkType match {
+        case EdgeIn =>
+          conns.groupBy(x => x._2)
+            .map(x => (x._1, x._2.map(x => x._1)))
+            .map(x => {
+              s"${x._1} -> (${x._2.map(identity)})"})
 
-    while (ranks.join(prevRanks).map{ case (v, (r, pr)) => r - pr <  errRate}.reduce(_&&_)) {
-      prevRanks = ranks.map(x => (x._1, x._2))
+        case EdgeOut =>
+          conns.groupByKey()
+            .map(v => {
+              s"${v._1} -> (${v._2.map(identity)})"})
 
-      val contributions = links.join(ranks).flatMap {
-        case (u, (uLinks, rank)) =>
-          uLinks.map(t => (t, rank / uLinks.size))
+        case EdgeBoth =>
+          conns.groupBy(x => x._2)
+            .map(x => (x._1, x._2.map(x => x._1)))
+            .join(conns.groupByKey())
+            .map(v => {
+              s"${v._2._1.map(identity)} -> " + s"${v._1} -> " + s"${v._2._2.map(identity)}"})
       }
-      ranks = contributions.reduceByKey((x,y) => x+y).
-        mapValues(v => 0.15 + 0.85*v)
-    }
+      (graph_repr, graph_repr.count())
+    })
 
-    FileUtils.deleteDirectory(new File(outputFile))
-    ranks.sortBy(_._2, ascending = false).repartition(1).saveAsTextFile(outputFile)
+    println(s"trasform() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 
-  def triangleCount(linkType: EdgeDirection = EdgeBoth): Int = {
-    val vmap: collection.Map[Int, Vertex] = vertices.map(v => (v.vid, v)).collectAsMap()
-    val triplets: RDD[(Vertex, Seq[(Vertex, Vertex)])] = vertices.map(v => (v, v.outpairs(linkType)))
+  def dynamicPageRank(tollDigits: Int, outputFolder: String = "dynamicPageRank"): Unit = {
+    val errorToll: Double = 1.0f / Math.pow(10, tollDigits)
 
-    val tcount: Double = triplets.zipWithIndex.map(x => {
-//      if (x._2 % 100 == 0) println(s"count at vertex n. ${x._2}\n")
-      x._1._2.map(xx => {
-        if (vmap(xx._1.vid).is_connected(xx._2, linkType)) {
-          1
-        }
-        else {
-//          println(s"No edge between ${xx._1.vid} and ${xx._2.vid}")
-          0
-        }
-      }).sum
-    }).sum
+    val (outputs, secs) = Timer.time({
+      val links = conns.groupByKey()
+      var ranks = links.mapValues(v => 1.0)
+      var prevItRanks = links.mapValues(v => 1.0)
 
-    if (linkType == EdgeBoth) {
-      require(tcount >= 3 && tcount % 3 == 0, "Error counting triangles")  // 4873443 for Epinions
-      (tcount / 3).toInt
-    } else {
-      tcount.toInt
-    }
+      while (ranks.join(prevItRanks).map{ case (v, (r, pr)) => r - pr <  errorToll}.reduce(_&&_)) {
+        prevItRanks = ranks.map(x => (x._1, x._2))
+
+        val contributions = links.join(ranks)
+          .flatMap {
+            case (u, (uLinks, rank)) =>
+              uLinks.map(t => (t, rank / uLinks.size))
+          }
+        ranks = contributions.reduceByKey((x,y) => x + y)
+          .mapValues(v => 0.15 + 0.85 * v)
+      }
+      (ranks, ranks.count())
+    })
+
+    println(s"dynamicPageRank() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    if (options._2) saveDataAsTextFile(outputs._1.sortBy(_._2, ascending = false), outputFolder)
+  }
+
+  def friendsRecommendations(outputFolder: String = "friendsRecommendations"): Unit = {
+
+  }
+
+  def triangleCount(outputFolder: String = "triangles"): Unit = {
+
+      val (outputs, secs) = Timer.time({
+        val triangles = conns.map(x => (x._2, x._1))
+          .join(conns)
+          .flatMap(x => Seq((x._2._1, x), (x._2._2, x)))
+          .join(conns)
+          .filter(x => (x._1 == x._2._1._2._1 && x._2._1._2._2 == x._2._2)
+            ||
+            (x._1 == x._2._1._2._2 && x._2._1._2._1 == x._2._2)
+          ).map(x => {
+            val c = if (x._1 == x._2._1._2._1) 1.0f else 1.0f / 3
+            (Set(x._2._1._1, x._2._1._2._1, x._2._1._2._2), c)
+        }).reduceByKey(_ + _)
+
+        (triangles, triangles.count())
+      })
+
+    println(s"triangleCount() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 }
 
@@ -88,7 +120,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 //    val triCounts = graph.triangleCount().vertices
 //    println(s"Triangle count by GraphX is ${triCounts.map(x=>x._2).sum()/3}")  // correct is 1624481
 
-//    Triangle count by parallel enumerating triples (O(n^3))
+//    v1 - Triangle counting by parallel enumerating triples (O(n^3))
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
 //    val edgesFraction = edges.count()/10  // edges.count()=508837
 //    val links = edges.zipWithIndex().filter(x=>x._2<edgesFraction-1)
@@ -126,7 +158,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 //      .count()
 //    println(s"Considering ${links.count()} edges, Triangles count is $triCount")
 
-//    Triangle counting by sequential triplets enumeration
+//    v2 - Triangle counting by sequential triplets enumeration
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
 //    val links = edges.groupByKey()
 //    println(trianglesCount(links.collect())) // 10^17 for Epinions!!
@@ -148,4 +180,28 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)]) {
 //      }
 //      triangles -= ((-1, -1, -1))
 //      triangles
+//    }
+
+//    v3 - Triangle counting by auxiliary non-RDD map access
+//    val vmap: collection.Map[Int, Vertex] = vertices.map(v => (v.vid, v)).collectAsMap()
+//    val triplets: RDD[(Vertex, Seq[(Vertex, Vertex)])] = vertices.map(v => (v, v.outpairs(linkType)))
+//
+//    val tcount: Double = triplets.zipWithIndex.map(x => {
+////      if (x._2 % 100 == 0) println(s"count at vertex n. ${x._2}\n")
+//      x._1._2.map(xx => {
+//        if (vmap(xx._1.vid).is_connected(xx._2, linkType)) {
+//          1
+//        }
+//        else {
+////          println(s"No edge between ${xx._1.vid} and ${xx._2.vid}")
+//          0
+//        }
+//      }).sum
+//    }).sum
+//
+//    if (linkType == EdgeBoth) {
+//      require(tcount >= 3 && tcount % 3 == 0, "Error counting triangles")  // 4873443 for Epinions
+//      (tcount / 3).toInt
+//    } else {
+//      tcount.toInt
 //    }
