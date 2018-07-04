@@ -9,10 +9,11 @@ object Main {
   type OptionMap = Map[Symbol, Any]
 
   val usageStr: String = """
-      Usage: main [--master URL] [--debug] [--save-results] [--trasform mode] [--dpr toll] [--friends-rec] [--triangles] --input GRAPHFILE\n
-      If no operation is specified as a command-line argument, ALL operations gets executed.
-      --trasform mode where 'mode' must be an Integer between 0 and 2 to indicate the kind of, per-vertex, edges list to get (0: outgoing links, 1: ingoing links, 2: for both)
-      --dpr toll where 'toll' must be an Integer between 1 and 9 to shift down the decimal digits for the tollerance value (e.g. --dpr 4 => 1e-4 => 0.00001)
+      Usage: main [--master URL] [--debug] [--save-results] [--trasform mode] [--dpr toll] [--friends-rec nRecs] [--triangles] --input GRAPHFILE\n
+      The last four optional arguments are the program functions also called jobs. If no job is specified as a command-line argument, ALL jobs gets executed.
+      \t--trasform mode where 'mode' must be an Integer between 0 and 2 to indicate the kind of, per-vertex, edges list to get (0: outgoing links, 1: ingoing links, 2: for both)
+      \t--dpr toll where 'toll' must be an Integer between 1 and 9 to shift down the decimal digits for the tollerance value (e.g. --dpr 4 => 1e-4 => 0.00001)
+      \t--friends-rec nRecs where 'nRecs' must be an Integer between 0 and 50 specifying the number of the, per-user/vertex, friends recommendations wanted (nRecs == 0 to emit all recommendations)
     """.trim
 
   def parseCLIargs(map : OptionMap, args: List[String]) : OptionMap = {
@@ -28,7 +29,7 @@ object Main {
       case "--outputs" :: tail => parseCLIargs(map ++ Map('save -> true), tail)
       case "--trasform" :: mode :: tail => parseCLIargs(map ++ Map('trasform -> mode), tail)
       case "--dpr" :: toll :: tail => parseCLIargs(map ++ Map('dpr -> toll), tail)
-      case "--friends-rec" :: tail => parseCLIargs(map ++ Map('recs -> true), tail)
+      case "--friends-rec" :: nRecs :: tail => parseCLIargs(map ++ Map('recs -> nRecs), tail)
       case "--triangles" :: tail => parseCLIargs(map ++ Map('triangles -> true), tail)
       case option :: _ => println("ERROR: Unknown option: " + option + "\n" + usageStr)
         sys.exit(1)
@@ -54,7 +55,7 @@ object Main {
          if (options('trasform).toString.toInt < 0 || options('trasform).toString.toInt > 2) throw new Exception()
       } catch {
         case e: Exception =>
-          println("ERROR: 'mode' of the --trasform task must be an integer between 0 and 2" + "\n" + usageStr)
+          println("ERROR: 'mode' of the --trasform job must be an integer between 0 and 2" + "\n" + usageStr)
           sys.exit(1)
       }
     }
@@ -64,7 +65,17 @@ object Main {
         if (options('dpr).toString.toInt < 1 || options('dpr).toString.toInt > 9) throw new Exception()
       } catch {
         case e: Exception =>
-          println("ERROR: 'toll' for the --dpr task must be an integer between 1 and 9" + "\n" + usageStr)
+          println("ERROR: 'toll' for the --dpr job must be an integer between 1 and 9" + "\n" + usageStr)
+          sys.exit(1)
+      }
+    }
+
+    if (options.contains('recs)) {
+      try {
+        if (options('recs).toString.toInt < 0 || options('recs).toString.toInt > 50) throw new Exception()
+      } catch {
+        case e: Exception =>
+          println("ERROR: 'recs' for the --friends-rec job must be an integer between 0 and 50" + "\n" + usageStr)
           sys.exit(1)
       }
     }
@@ -73,7 +84,7 @@ object Main {
     conf.setAppName("BattilanaSparkApp")
     if (options.contains('master))  conf.setMaster(options('master).toString)
     conf.set("spark-serializer", "org.apache.spark.serializer.KryoSerializer")
-    conf.registerKryoClasses(Array(classOf[Graph], classOf[Edge], classOf[Vertex]))
+    conf.registerKryoClasses(Array(classOf[GraphJobs], classOf[Edge], classOf[Vertex]))
 
     run(conf, options)
   }
@@ -100,8 +111,8 @@ object Main {
             graph.dynamicPageRank(toll.toString.toInt)
             compute(tail)
 
-          case ('recs, true) :: tail =>
-            graph.friendsRecommendations()
+          case ('recs, nRecs) :: tail =>
+            graph.friendsRecommendations(nRecs.toString.toInt)
             compute(tail)
 
           case ('triangles, true) :: tail =>
@@ -121,7 +132,7 @@ object Main {
     sys.exit(0)
   }
 
-  def parse_validate_graph(input_graph_fn: String): Graph = {
+  def parse_validate_graph(input_graph_fn: String): GraphJobs = {
 
     if (!Files.exists(Paths.get(input_graph_fn))) {
       println("ERROR: Input graph file does not exists: " + input_graph_fn)
@@ -135,6 +146,6 @@ object Main {
 
     val (nodes, connections) = new graphFileParser(input_graph_fn).parseIntoRDDs()
 
-    new Graph(nodes, connections, options=(DEBUG, OUTPUT))
+    new GraphJobs(nodes, connections, options=(DEBUG, OUTPUT))
   }
 }

@@ -4,24 +4,22 @@ import java.io._
 
 import org.apache.spark.storage.StorageLevel
 
-class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
+class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
 
-  var conns: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
+  var edges: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
-  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
+//  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
+//  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
+//  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
+//  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks)
+//    .map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
+//    .sortBy(_._1.vid).persist()
+//  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
 
-  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
-  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
-
-  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks)
-    .map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
-    .sortBy(_._1.vid).persist()
-  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
-
-  def allOps = {
+  def allOps(): Unit = {
     trasform(EdgeBoth)
     dynamicPageRank(8)
-    friendsRecommendations()
+    friendsRecommendations(0)
     triangleCount()
   }
 
@@ -35,27 +33,27 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
     val (outputs, secs) = Timer.time({
       val graph_repr = linkType match {
         case EdgeIn =>
-          conns.groupBy(x => x._2)
+          edges.groupBy(x => x._2)
             .map(x => (x._1, x._2.map(x => x._1)))
             .map(x => {
               s"${x._1} -> (${x._2.map(identity)})"})
 
         case EdgeOut =>
-          conns.groupByKey()
+          edges.groupByKey()
             .map(v => {
               s"${v._1} -> (${v._2.map(identity)})"})
 
         case EdgeBoth =>
-          conns.groupBy(x => x._2)
+          edges.groupBy(x => x._2)
             .map(x => (x._1, x._2.map(x => x._1)))
-            .join(conns.groupByKey())
+            .join(edges.groupByKey())
             .map(v => {
               s"${v._2._1.map(identity)} -> " + s"${v._1} -> " + s"${v._2._2.map(identity)}"})
       }
       (graph_repr, graph_repr.count())
     })
 
-    println(s"trasform() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    println(s"trasform() job DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
     if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 
@@ -63,7 +61,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
     val errorToll: Double = 1.0f / Math.pow(10, tollDigits)
 
     val (outputs, secs) = Timer.time({
-      val links = conns.groupByKey()
+      val links = edges.groupByKey()
       var ranks = links.mapValues(v => 1.0)
       var prevItRanks = links.mapValues(v => 1.0)
 
@@ -81,21 +79,68 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
       (ranks, ranks.count())
     })
 
-    println(s"dynamicPageRank() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    println(s"dynamicPageRank() job DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
     if (options._2) saveDataAsTextFile(outputs._1.sortBy(_._2, ascending = false), outputFolder)
   }
 
-  def friendsRecommendations(outputFolder: String = "friendsRecommendations"): Unit = {
+  def friendsRecommendations(nRecs: Int, outputFolder: String = "friendsRecommendations"): Unit = {
 
+    val (outputs, secs) = Timer.time({
+      val mappings = edges.map(x => (Set(x._1, x._2), 1)).reduceByKey(_ + _)
+
+      val friends = mappings.filter(x => x._2 == 2).map(x => x._1)
+
+      val friends_lists = friends.map(x => x.toList)
+        .map {
+          case List(a, b) => (a, b)
+        }
+        .flatMap(x => List(x, x.swap))
+        .groupByKey()
+
+      val recommendations = friends_lists.map {
+        case (person, its_friends) =>
+          (person, its_friends ++ Iterable[Int](person))
+      }.flatMap {
+        case (person, its_friends) =>
+          val ac = its_friends.toSeq.combinations(2)
+          ac.map(x =>
+            if (x.head == person || x(1) == person)
+              (Set(x.head, x(1)), (0, person))
+            else
+              (Set(x.head, x(1)), (1, person))
+          )
+      }
+        .groupByKey()
+        .filter(x => x._2.forall(xx => xx._1 != 0))
+        .map(x =>
+          (x._1.toSeq,
+            x._2.map(x => (x._1, Set(x._2)))
+              .reduce((x, y) => (x._1 + y._1, x._2 ++ y._2))))
+        .flatMap(x =>
+          Seq((x._1.head, (x._1(1), x._2._1, x._2._2)), (x._1(1), (x._1.head, x._2._1, x._2._2)))
+        )
+        .groupByKey()
+        .mapValues(x =>
+          if (nRecs == 0)
+            x.toSeq.sortBy(_._2)(Ordering[Int].reverse)
+          else
+            x.toSeq.sortBy(_._2)(Ordering[Int].reverse).take(nRecs)
+        )
+
+      (recommendations, recommendations.count())
+    })
+
+    println(s"friendsRecommendations() job DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 
   def triangleCount(outputFolder: String = "triangles"): Unit = {
 
       val (outputs, secs) = Timer.time({
-        val triangles = conns.map(x => (x._2, x._1))
-          .join(conns)
+        val triangles = edges.map(x => (x._2, x._1))
+          .join(edges)
           .flatMap(x => Seq((x._2._1, x), (x._2._2, x)))
-          .join(conns)
+          .join(edges)
           .filter(x => (x._1 == x._2._1._2._1 && x._2._1._2._2 == x._2._2)
             ||
             (x._1 == x._2._1._2._2 && x._2._1._2._1 == x._2._2)
@@ -107,7 +152,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
         (triangles, triangles.count())
       })
 
-    println(s"triangleCount() op DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
+    println(s"triangleCount() job DONE: result has ${outputs._2} elements (elapsed $secs seconds)")
     if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 }
@@ -120,7 +165,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
 //    val triCounts = graph.triangleCount().vertices
 //    println(s"Triangle count by GraphX is ${triCounts.map(x=>x._2).sum()/3}")  // correct is 1624481
 
-//    v1 - Triangle counting by parallel enumerating triples (O(n^3))
+//    V1 - Triangle counting by parallel enumerating triples (O(n^3))
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
 //    val edgesFraction = edges.count()/10  // edges.count()=508837
 //    val links = edges.zipWithIndex().filter(x=>x._2<edgesFraction-1)
@@ -158,7 +203,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
 //      .count()
 //    println(s"Considering ${links.count()} edges, Triangles count is $triCount")
 
-//    v2 - Triangle counting by sequential triplets enumeration
+//    V2 - Triangle counting by sequential triplets enumeration
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
 //    val links = edges.groupByKey()
 //    println(trianglesCount(links.collect())) // 10^17 for Epinions!!
@@ -182,7 +227,7 @@ class Graph(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boo
 //      triangles
 //    }
 
-//    v3 - Triangle counting by auxiliary non-RDD map access
+//    V3 - Triangle counting by auxiliary non-RDD map access
 //    val vmap: collection.Map[Int, Vertex] = vertices.map(v => (v.vid, v)).collectAsMap()
 //    val triplets: RDD[(Vertex, Seq[(Vertex, Vertex)])] = vertices.map(v => (v, v.outpairs(linkType)))
 //
