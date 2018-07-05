@@ -1,20 +1,11 @@
 import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
-import java.io._
-
+import java.io.File
 import org.apache.spark.storage.StorageLevel
 
 class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
 
   var edges: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
-
-//  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
-//  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
-//  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
-//  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks)
-//    .map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
-//    .sortBy(_._1.vid).persist()
-//  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
 
   def allOps(): Unit = {
     trasform(EdgeBoth)
@@ -24,11 +15,12 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def saveDataAsTextFile(data: RDD[_], outputName: String, outputBase: String = "outputs"): Unit = {
-    FileUtils.deleteDirectory(new File(outputBase + outputName))
-    data.saveAsTextFile(outputBase + outputName)
+    FileUtils.deleteDirectory(new File(outputBase, outputName))
+    data.saveAsTextFile(new File(outputBase, outputName).getPath)
   }
 
   def trasform(linkType: EdgeDirection, outputFolder: String = "trasformed"): Unit = {
+    if (options._1) println(s"Starting trasform() job with parameter $linkType (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val graph_repr = linkType match {
@@ -59,6 +51,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
 
   def dynamicPageRank(tollDigits: Int, outputFolder: String = "dynamicPageRank"): Unit = {
     val errorToll: Double = 1.0f / Math.pow(10, tollDigits)
+    if (options._1) println(s"Starting dynamicPageRank() job with error tollerance $errorToll (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val links = edges.groupByKey()
@@ -84,6 +77,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def friendsRecommendations(nRecs: Int, outputFolder: String = "friendsRecommendations"): Unit = {
+    if (options._1) println(s"Starting friendsRecommendations() job with nRecs=$nRecs (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val mappings = edges.map(x => (Set(x._1, x._2), 1)).reduceByKey(_ + _)
@@ -135,6 +129,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def triangleCount(outputFolder: String = "triangles"): Unit = {
+    if (options._1) println(s"Starting triangleCount() job (outputFolder '$outputFolder')")
 
       val (outputs, secs) = Timer.time({
         val triangles = edges.map(x => (x._2, x._1))
@@ -156,6 +151,15 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
     if (options._2) saveDataAsTextFile(outputs._1, outputFolder)
   }
 }
+
+// auxilliary Graph data structure
+//  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
+//  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
+//  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
+//  val links: RDD[(Vertex, Option[Iterable[Vertex]], Option[Iterable[Vertex]])] = outlinks.fullOuterJoin(inlinks)
+//    .map(x => (x._1, x._2._1.map(v => v), x._2._2.map(v => v)))
+//    .sortBy(_._1.vid).persist()
+//  val vertices: RDD[Vertex] = links.map(x => Vertex(x._1.vid, x._2, x._3)).sortBy(_.vid).persist()
 
 //    Triangle count by GraphX
 //    val graph = GraphLoader.edgeListFile(sc, "/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt",

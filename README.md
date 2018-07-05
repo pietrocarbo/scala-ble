@@ -9,7 +9,7 @@ A Scala - Spark based project to experiment with map-reduce algorithms on big da
     + set up the project_id property `gcloud config set project p_id` with p_id shown in Web UI
 
 ### Deploy project
-+ Build your ScalaSpark project in .jar file (using SBT `package`)
++ Build your ScalaSpark project in .jar file (specifying `% 'provided'` in _build.sbt_ Spark dependencies and then using SBT `assembly` command)
 + Copy also the graph data
 + Run the Spark hob in one of following way: 
     + Copy the jar to the cluster `gcloud compute scp target/scala-2.11/scalasparkproject_2.11-0.1.jar battilanap@spark-cluster-m:/home/battilanap`
