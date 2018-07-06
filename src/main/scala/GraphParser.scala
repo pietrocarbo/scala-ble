@@ -9,22 +9,20 @@ import org.apache.spark.rdd.RDD
 // fromID\ttoID
 class GraphParser(filename: String) {
 
-  def parseIntoRDDs(): (RDD[Int], RDD[(Int, Int)])  = {
+  def parseIntoRDDs(nPartitions: Int): RDD[(Int, Int)]  = {
 
     val sc: SparkContext = SparkContext.getOrCreate()
 
-    val nodes: RDD[Int] = sc.textFile(filename).filter(line => !line.startsWith("#"))
-      .flatMap(line => line.split("\t"))
-      .map(node => node.toInt)
-      .distinct()
+    val textFileRDD =
+      if (nPartitions == 0) sc.textFile(filename)
+      else sc.textFile(filename, nPartitions)
 
-    val edges = sc.textFile(filename).filter(line => !line.startsWith("#"))
+    textFileRDD.filter(line => !line.startsWith("#"))
       .map(line => line.split("\t"))
       .map(nodes => nodes(0).toInt -> nodes(1).toInt)
-
-    (nodes, edges)
   }
 
+  // Not used
   def parse(): (Set[Int], Seq[(Int, Int)]) = {
 
     val nodes: Set[Int] = Source.fromFile(filename).getLines().filter(line => !line.startsWith("#"))

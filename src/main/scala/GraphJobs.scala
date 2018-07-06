@@ -1,11 +1,14 @@
 import org.apache.spark.rdd.RDD
 import org.apache.commons.io.FileUtils
 import java.io.File
+import org.apache.hadoop.fs.{FileSystem, Path}
+
+import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel
 
-class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
+class GraphJobs(connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
 
-  var edges: connections.type = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
+  var edges: RDD[(Int, Int)] = connections.persist(StorageLevel.MEMORY_AND_DISK_SER)
 
   def allOps(): Unit = {
     trasform(EdgeBoth)
@@ -15,12 +18,20 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def saveDataAsTextFile(data: RDD[_], outputName: String, outputBase: String = "outputs"): Unit = {
-    FileUtils.deleteDirectory(new File(outputBase, outputName))
-    data.saveAsTextFile(new File(outputBase, outputName).getPath)
+    val outputPath: String = new File(outputBase, outputName).getPath
+
+    if (SparkContext.getOrCreate.master.contains("local"))
+      FileUtils.deleteDirectory(new File(outputBase, outputName))
+    else {
+      val fs = FileSystem.get(SparkContext.getOrCreate.hadoopConfiguration)
+      if (fs.exists(new Path(outputPath))) fs.delete(new Path(outputPath),true)
+    }
+
+    data.saveAsTextFile(outputPath)
   }
 
   def trasform(linkType: EdgeDirection, outputFolder: String = "trasformed"): Unit = {
-    if (options._1) println(s"Starting trasform() job with parameter $linkType (outputFolder '$outputFolder')")
+    if (options._1) println(s"trasform() started job with parameter $linkType (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val graph_repr = linkType match {
@@ -51,7 +62,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
 
   def dynamicPageRank(tollDigits: Int, outputFolder: String = "dynamicPageRank"): Unit = {
     val errorToll: Double = 1.0f / Math.pow(10, tollDigits)
-    if (options._1) println(s"Starting dynamicPageRank() job with error tollerance $errorToll (outputFolder '$outputFolder')")
+    if (options._1) println(s"dynamicPageRank() job started with error tollerance $errorToll (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val links = edges.groupByKey()
@@ -77,7 +88,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def friendsRecommendations(nRecs: Int, outputFolder: String = "friendsRecommendations"): Unit = {
-    if (options._1) println(s"Starting friendsRecommendations() job with nRecs=$nRecs (outputFolder '$outputFolder')")
+    if (options._1) println(s"friendsRecommendations() job started with nRecs=$nRecs (outputFolder '$outputFolder')")
 
     val (outputs, secs) = Timer.time({
       val mappings = edges.map(x => (Set(x._1, x._2), 1)).reduceByKey(_ + _)
@@ -129,7 +140,7 @@ class GraphJobs(vids: RDD[Int], connections: RDD[(Int, Int)], options: (Boolean,
   }
 
   def triangleCount(outputFolder: String = "triangles"): Unit = {
-    if (options._1) println(s"Starting triangleCount() job (outputFolder '$outputFolder')")
+    if (options._1) println(s"triangleCount() job started (outputFolder '$outputFolder')")
 
       val (outputs, secs) = Timer.time({
         val triangles = edges.map(x => (x._2, x._1))
