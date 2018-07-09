@@ -40,11 +40,13 @@ where `projectID` is the ID associated with project created at point 1.
 + Copy to the cluster master node:
     + the application .jar with the command `gcloud compute scp <path/of/app.jar> <yourGCPusername>@spark-cluster-m:/home/<yourGCPusername> --zone europe-west3-a`
     + the graph dataset to operate on with the command `gcloud compute scp <path/of/graphfile.txt> <yourGCPusername>@spark-cluster-m:/home/<yourGCPusername> --zone europe-west3-a`
-+ Run the Spark application on the master node via YARN using one of the two following ways:  
-        + SSH to the master node and run the command `spark-submit <app.jar> --appArguments`
-        + Submit a Dataproc job:
-            + via the GCP Web Console in the Dataproc Job [section](https://console.cloud.google.com/dataproc/jobs)
-            + from the directory of your .jar `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar <app.jar> -- --appArguments` 
++ Upload the input graph file to HDFS:
+    + SSH into the master node (point 5. of the previous section) and run the command `hdfs dfs -put <graphfile.txt>`
++ Run the Spark application on the master node via YARN using one of the two following ways: 
+    + SSH into the master node (point 5. of the previous section) and run the command `spark-submit <app.jar> --appArguments`
+    + Submit a Dataproc job:
+        + via the GCP Web Console in the Dataproc Job [section](https://console.cloud.google.com/dataproc/jobs)
+        + from the directory of your .jar `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar <app.jar> -- --appArguments` 
 
 ## Monitor execution
 The status of the applications running on your cluster can be monitored using several web pages. 
@@ -53,18 +55,18 @@ First setup SSH tunnelling to the master node of your cluster with the commands:
 + `gcloud compute ssh <yourGCPusername>@spark-cluster-m --zone europe-west3-a -- -D 1080 -N`
 + `/usr/bin/google-chrome --proxy-server="socks5://localhost:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost" --user-data-dir=/tmp/spark-cluster-m`
 
-Then inside the Chrome browser enter URL:
-+ `http://spark-cluster-m:8088` for YARN   
+Then inside the Chrome browser enter URL:spark.dynamicAllocation.enabled
++ `http://spark-cluster-m:8088` for YARN Manager   
 + `http://spark-cluster-m:9870` for Hadoop 
-+ `http://spark-cluster-m:18080` for Spark history server
++ `http://spark-cluster-m:18080` for Spark History server
 
 ### Log verbosity
 The level of the log verbosity is defined in `/etc/spark/conf/log4j.properties` files and can be overridden by the flag `--driver-log-levels root=FATAL,com.example=INFO`
 
-# Outputs
+## Output files
 + Inspect and/or retrieve output files from the HDFS filesytem in two ways:
     + using the gui of the Hadoop [webpage](http://spark-cluster-m:9870/explorer.html#/)
-    + using the CLI Hadoop commands (while SSHed into the master node) `hadoop dfs -ls ` etc..
+    + using the CLI Hadoop commands (while SSHed into the master node): `hadoop dfs -ls ` , etc..
 
 ## Executors and memory configuration
 When running a Spark application we have to consider three fundamental (Spark/YARN) parameters to get the best performance: 
@@ -72,13 +74,16 @@ When running a Spark application we have to consider three fundamental (Spark/YA
 + `--executor-cores`
 + `--executor-memory`
 
-The official Spark [documentation](http://spark.apache.org/docs/latest/hardware-provisioning.html) and
-[this](https://spoddutur.github.io/spark-notes/distribution_of_executors_cores_and_memory_for_spark_application.html) blog post
-give some hints for an optimal configuration of these parameters.  
+The official Spark [documentation](http://spark.apache.org/docs/latest/hardware-provisioning.html),
+[this](https://spoddutur.github.io/spark-notes/distribution_of_executors_cores_and_memory_for_spark_application.html) and [this](http://site.clairvoyantsoft.com/understanding-resource-allocation-configurations-spark-application/)
+blog posts give some hints for an optimal configuration of these parameters.  
 
 ## Algorithms performance
 + Using the dataset soc-Epinions1.txt [75K nodes, 508K edges] (available from SNAP [here](https://snap.stanford.edu/data/soc-Epinions1.html))
-    + Locally with `local[8]`:
+    + Locally with `local[8]`(JVM memory -Xms10g -Xmx14g) :
+        + trasform(2): 2.0 seconds
+        + dynamicPageRank(8): 2.0 seconds
+        + friends_recommendations(0): 22.0 seconds
         + triangles_count_V4: 643.0 seconds = 10,71 min
     + Spark cluster of `1 master - 4 slaves` (each with 2 CPU / 7.5GB RAM):
         + triangles_count_V1: 63 min
@@ -88,11 +93,14 @@ give some hints for an optimal configuration of these parameters.
         + triangles_count_V4 (repartition 85): 68.0 seconds 
         + triangles_count_V4 (repartition 148): 55.0 seconds
         + __triangles_count_V4 (repartition 148, HDFS input parallel loading): 53.0 seconds__ 
+            + trasform(2): 12 seconds
+            + dynamicPageRank(8): 5 seconds
+            + friends_recommendations(0): 19 seconds
 
 + Using the dataset soc-LiveJournal1.txt [4.8M nodes, 68M edges] (available from SNAP [here](https://snap.stanford.edu/data/soc-LiveJournal1.html))
     + Spark cluster of `1 master - 5 slaves` (each with 16 CPU / 16GB RAM):
-            + friends_recommendations:
-            + triangles_count_V4: 
-            + triangles_count_V4 (repartition 85):  
-            + triangles_count_V4 (repartition 148):
-            + __triangles_count_V4 (repartition 148, HDFS input parallel loading): __
+        + execution line: `spark-submit --conf spark.dynamicAllocation.enabled=false --num-executors 17 --executor-cores 5 --executor-memory 19G ScalaSparkProject-assembly-0.1.jar --debug --outputs --partitions 148 --input soc-LiveJournal1.txt`
+        + trasform(2): 38 seconds
+        + dynamicPageRank(8): 14 seconds
+        + friends_recommendations(0): 806 seconds = 13.3 minutes
+        + triangles_count_V4: NA (due to OOMs)
