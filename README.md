@@ -1,4 +1,4 @@
-# Scala Spark project
+# Scala Spark Project
 A Scala (v2.11) - Spark (v2.3) based project to experiment with map-reduce algorithms on big data graph shaped. 
 
 The dependencies (only Apache Spark core) linking and building for this project is done via `sbt`.
