@@ -6,7 +6,7 @@ import org.apache.spark.rdd.RDD
 
 // A simple class with methods to parse 'soc' graph file format that is:
 // # comment lines start with hashtag
-// fromID\ttoID
+// FromID\tToID
 class GraphParser(filename: String) {
 
   def parseIntoRDDs(nPartitions: Int): RDD[(Int, Int)]  = {

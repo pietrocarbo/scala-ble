@@ -1,64 +1,98 @@
 # Scala Spark project
-A Scala - Spark based project to experiment with map-reduce algorithms on big data graph shaped. The dependencies and assembly for this project (like Apache Spark) are done using sbt.
+A Scala (v2.11) - Spark (v2.3) based project to experiment with map-reduce algorithms on big data graph shaped. 
 
-## How to deploy MapReduce jobs on Google Cloud Platform clusters
+The dependencies (only Apache Spark core) linking and building for this project is done via `sbt`.
 
-## Setup cluster
-+ In Dataproc setup the configuration of the cluster (better in zones: europe-west-1/2/__3__) and run it
-+ Download and install locally gcloud CLI tool:
-    + set up the project_id property `gcloud config set project p_id` with p_id shown in Web UI
-+ `hdfs dfs -mkdir -p hdfs://spark-cluster-m/user/battilanap`
+To avoid dealing with duplicate and/or conflicts between libraries, before
+launching the command `sbt assembly` to create the __.jar__ artifact,
+add the `provided` option to the `org.apache.spark.spark-core` dependency in the `build.sbt` file. 
+
+Then you can launch the application using the `spark-submit <jarFile> --appArguments` command.
+
+## Command-line arguments
+Usage: `ScalaSparkProject.jar [--debug] [--local N_CORES] [--partitions N_PART] [--outputs] [--trasform MODE] [--dpr N_DIGITS] [--friends-rec N_RECS] [--triangles] --input GRAPHFILE`
+
+The last four optional arguments are the main program functions also called _jobs_. If no job is specified as a command-line argument, __ALL__ jobs gets executed.\
+You can run the application locally and control the number of cores used using the `--local` option.\
+Giving the argument `--outputs` the program will save the resulting RDDs in a folder `./outputs/jobName`.
+
+__OPTIONS__ 
+* `--local N_CORES` where _N_CORES_ must be an Integer indicating the number of cores to use. __Only__ when launching the application locally.
+* `--partitions N_PARTS` where _N_PARTS_ must be an Integer > 0 indicating the number of partitions for the main edges RDD. Recommended value is `#cores*#executors*1.75` (__powerful__ flag to tune parallelism, use with caution).
+* `--trasform MODE` where _MODE_ must be an Integer between 0 and 2 to indicate the kind of, per-vertex, edges list to get (`0`: outgoing links, `1`: ingoing links, `2`: both).
+* `--dpr N_DIGITS` where _N_DIGITS_ must be an Integer between 1 and 20 to shift down the decimal digits for the tolerance value (e.g. `--dpr 4` => toll = 1e-4).
+* `--friends-rec N_RECS` where _N_RECS_ must be an Integer between 0 and 50 specifying the number of the, per-user/vertex, friends recommendations wanted (`0`: to emit all recommendations).
+
+
+## How to deploy Spark jobs on Google Cloud Platform clusters
+
+## Configure cluster
+1. Create a project via the [Cloud Console](https://console.cloud.google.com)
+1. Download the Cloud SDK from the official source [here](https://cloud.google.com/sdk/) and install it on your system
+1. Use the command `gcloud config set project <projectID>` (as explained [here](https://cloud.google.com/sdk/gcloud/reference/config/set)) 
+where `projectID` is the ID associated with project created at point 1.
+1. Go to the [webpage](https://console.cloud.google.com/dataproc) of Dataproc and create a cluster giving it the name _spark-cluster_ (the nearest region is _europe-west3-a_ i.e. Frankfurt)
+1. You can access the master node of your cluster with the command `gcloud compute ssh <yourGCPusername>@spark-cluster-m --zone europe-west3-a` 
+1. Run the command `hdfs dfs -mkdir -p hdfs://spark-cluster-m/user/<yourGCPusername>` to create a folder in the HDFS filesystem
 
 ## Deploy project
-+ Build your ScalaSpark project in .jar file (specifying `% 'provided'` in _build.sbt_ Spark dependencies and then using SBT `assembly` command)
-+ Copy also the graph data
-+ Run the Spark hob in one of following way: 
-    + Copy the jar to the cluster `gcloud compute scp target/scala-2.11/scalasparkproject_2.11-0.1.jar battilanap@spark-cluster-m:/home/battilanap --zone europe-west3-a`
-    + SSH into the master node and run:
-        + `gcloud compute ssh battilanap@spark-cluster-m --zone europe-west3-a` 
-        + `spark-submit scalasparkproject_2.11-0.1.jar --options`
-    + Submit a Dataproc job (from the directory of your .jar):
-        + `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar scalasparkproject_2.11-0.1.jar -- --debug` 
-+ Inspect or retrieve output files from the HDFS (while SSHed in master) `hadoop fs -ls /user/battilanap`
++ Build your ScalaSpark project into a .jar file (specifying the _spark-core_ dependency as `% 'provided'` in the __build.sbt__ file and then the `sbt assembly` command)
++ Copy to the cluster master node:
+    + the application .jar with the command `gcloud compute scp <path/of/app.jar> <yourGCPusername>@spark-cluster-m:/home/<yourGCPusername> --zone europe-west3-a`
+    + the graph dataset to operate on with the command `gcloud compute scp <path/of/graphfile.txt> <yourGCPusername>@spark-cluster-m:/home/<yourGCPusername> --zone europe-west3-a`
++ Run the Spark application on the master node via YARN using one of the two following ways:  
+        + SSH to the master node and run the command `spark-submit <app.jar> --appArguments`
+        + Submit a Dataproc job:
+            + via the GCP Web Console in the Dataproc Job [section](https://console.cloud.google.com/dataproc/jobs)
+            + from the directory of your .jar `gcloud dataproc jobs submit spark --cluster spark-cluster --region europe-west3 --jar <app.jar> -- --appArguments` 
 
 ## Monitor execution
-It can be done using the Web UIs of the GCP cluster. First setup SSH tunnelling:
-+ `gcloud compute ssh battilanap@spark-cluster-m --zone europe-west3-a -- -D 1080 -N`
+The status of the applications running on your cluster can be monitored using several web pages. 
+
+First setup SSH tunnelling to the master node of your cluster with the commands:
++ `gcloud compute ssh <yourGCPusername>@spark-cluster-m --zone europe-west3-a -- -D 1080 -N`
 + `/usr/bin/google-chrome --proxy-server="socks5://localhost:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost" --user-data-dir=/tmp/spark-cluster-m`
+
 Then inside the Chrome browser enter URL:
-+ `http://spark-cluster-m:8088` for YARN 
++ `http://spark-cluster-m:8088` for YARN   
 + `http://spark-cluster-m:9870` for Hadoop 
 + `http://spark-cluster-m:18080` for Spark history server
 
-### Logs
-YARN log aggregation
-+ `yarn.log-aggregation-enable` and then `yarn logs -applicationId <app ID>`
+### Log verbosity
+The level of the log verbosity is defined in `/etc/spark/conf/log4j.properties` files and can be overridden by the flag `--driver-log-levels root=FATAL,com.example=INFO`
 
-gcloud dataproc jobs submit log flags
-Verbosity of log4j is controlled by /etc/spark/conf/log4j.properties or overridden by the flag `--driver-log-levels root=FATAL,com.example=INF ...`
+# Outputs
++ Inspect and/or retrieve output files from the HDFS filesytem in two ways:
+    + using the gui of the Hadoop [webpage](http://spark-cluster-m:9870/explorer.html#/)
+    + using the CLI Hadoop commands (while SSHed into the master node) `hadoop dfs -ls ` etc..
 
-GCLOUD wide flags 
-+ --verbosity=V   V::={debug, info, warning, error, none}
-+ --user-output-enabled
+## Executors and memory configuration
+When running a Spark application we have to consider three fundamental (Spark/YARN) parameters to get the best performance: 
++ `--num-executors`
++ `--executor-cores`
++ `--executor-memory`
 
-## Spark configuration
-[Blog](https://spoddutur.github.io/spark-notes/distribution_of_executors_cores_and_memory_for_spark_application.html) 
-and official [doc](http://spark.apache.org/docs/latest/hardware-provisioning.html) 
-with tips for configuring the three fundamental Yarn/Spark parameters when launching our Spark job
-+ --num-executors
-+ --executor-cores
-+ --executor-memory
+The official Spark [documentation](http://spark.apache.org/docs/latest/hardware-provisioning.html) and
+[this](https://spoddutur.github.io/spark-notes/distribution_of_executors_cores_and_memory_for_spark_application.html) blog post
+give some hints for an optimal configuration of these parameters.  
 
-# Tested algorithms performance
-+ soc-Epinions1
-    + local[8]
+## Algorithms performance
++ Using the dataset soc-Epinions1.txt [75K nodes, 508K edges] (available from SNAP [here](https://snap.stanford.edu/data/soc-Epinions1.html))
+    + Locally with `local[8]`:
         + triangles_count_V4: 643.0 seconds = 10,71 min
-    + 1m4s (2vCPU/7.5GB RAM)
+    + Spark cluster of `1 master - 4 slaves` (each with 2 CPU / 7.5GB RAM):
         + triangles_count_V1: 63 min
-    + 1m5s (16vCPU/16GB RAM)
-        + f_recs: 23 seconds
+    + Spark cluster of `1 master - 5 slaves` (each with 16 CPU / 16GB RAM):
+        + friends_recommendations: 23 seconds
         + triangles_count_V4: 577.0 seconds = 9,6 min
         + triangles_count_V4 (repartition 85): 68.0 seconds 
         + triangles_count_V4 (repartition 148): 55.0 seconds
-        + triangles_count_V4 (repartition 148, HDFS loading): 53.0 seconds 
-      
+        + __triangles_count_V4 (repartition 148, HDFS input parallel loading): 53.0 seconds__ 
+
++ Using the dataset soc-LiveJournal1.txt [4.8M nodes, 68M edges] (available from SNAP [here](https://snap.stanford.edu/data/soc-LiveJournal1.html))
+    + Spark cluster of `1 master - 5 slaves` (each with 16 CPU / 16GB RAM):
+            + friends_recommendations:
+            + triangles_count_V4: 
+            + triangles_count_V4 (repartition 85):  
+            + triangles_count_V4 (repartition 148):
+            + __triangles_count_V4 (repartition 148, HDFS input parallel loading): __

@@ -14,14 +14,14 @@ object Main {
 Usage: ScalaSparkProject.jar [--debug] [--local N_CORES] [--partitions N_PART] [--outputs] [--trasform MODE] [--dpr N_DIGITS] [--friends-rec N_RECS] [--triangles] --input GRAPHFILE
 
 The last four optional arguments are the main program functions also called jobs. If no job is specified as a command-line argument, ALL jobs gets executed.
-If unspecified as command-line argument, the default Spark master URL is 'local[*]'.
-With the option '--outputs' the program will save the resulting RDD in a folder './outputs/jobName'.
+You can run the application locally and control the number of cores used using the --local option.
+Giving the argument '--outputs' the program will save the resulting RDDs in a folder './outputs/jobName'.
 
 OPTIONS
---local N_CORES where 'N_CORES' must be an Integer indicating the number of cores to use ONLY when launching the program in local mode.
---partitions N_PARTS where 'N_PARTS' must be an Integer > 0 indicating the number of partitions for the main edges RDD. Recommended value is #cores*#executors*1.75 (powerful flag to handle parallelism, use with caution).
---trasform MODE where 'MODE' must be an Integer between 0 and 2 to indicate the kind of, per-vertex, edges list to get (0: outgoing links, 1: ingoing links, 2: for both).
---dpr N_DIGITS where 'N_DIGITS' must be an Integer between 1 and 20 to shift down the decimal digits for the tollerance value (e.g. --dpr 4 => 1e-4 => 0.00001).
+--local N_CORES where 'N_CORES' must be an Integer indicating the number of cores to use. ONLY when launching the application locally.
+--partitions N_PARTS where 'N_PARTS' must be an Integer > 0 indicating the number of partitions for the main edges RDD. Recommended value is #cores*#executors*1.75 (powerful flag to tune parallelism, use with caution).
+--trasform MODE where 'MODE' must be an Integer between 0 and 2 to indicate the kind of, per-vertex, edges list to get (0: outgoing links, 1: ingoing links, 2: both).
+--dpr N_DIGITS where 'N_DIGITS' must be an Integer between 1 and 20 to shift down the decimal digits for the tolerance value (e.g. '--dpr 4' => toll = 1e-4).
 --friends-rec N_RECS where 'N_RECS' must be an Integer between 0 and 50 specifying the number of the, per-user/vertex, friends recommendations wanted (nRecs == 0 to emit all recommendations).
 
  """.trim
@@ -116,7 +116,7 @@ OPTIONS
     conf.setAppName("BattilanaSparkApp")
     if (options.contains('local))  conf.setMaster("local[" + options('local).toString + "]")
     conf.set("spark-serializer", "org.apache.spark.serializer.KryoSerializer")
-    conf.registerKryoClasses(Array(classOf[GraphJobs]))
+    conf.registerKryoClasses(Array(classOf[GraphJobs], classOf[GraphParser]))
 
     run(conf, options)
   }
