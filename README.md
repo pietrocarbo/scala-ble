@@ -60,7 +60,7 @@ Then inside the Chrome browser enter URL:spark.dynamicAllocation.enabled
 + `http://spark-cluster-m:9870` for Hadoop 
 + `http://spark-cluster-m:18080` for Spark History server
 
-### Log verbosity
+### Logs verbosity
 The level of the log verbosity is defined in `/etc/spark/conf/log4j.properties` files and can be overridden by the flag `--driver-log-levels root=FATAL,com.example=INFO`
 
 ## Output files
@@ -103,4 +103,4 @@ blog posts give some hints for an optimal configuration of these parameters.
         + trasform(2): 38 seconds
         + dynamicPageRank(8): 14 seconds
         + friends_recommendations(0): 806 seconds = 13.3 minutes
-        + triangles_count_V4: NA (due to OOMs)
+        + triangles_count_V4: NA (due to OOM errors)
