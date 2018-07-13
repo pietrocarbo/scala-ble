@@ -147,7 +147,8 @@ class GraphJobs(connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
           .join(edges)
           .flatMap(x => Seq((x._2._1, x), (x._2._2, x)))
           .join(edges)
-          .filter(x => (x._1 == x._2._1._2._1 && x._2._1._2._2 == x._2._2)
+          .filter(x =>
+            (x._1 == x._2._1._2._1 && x._2._1._2._2 == x._2._2)
             ||
             (x._1 == x._2._1._2._2 && x._2._1._2._1 == x._2._2)
           ).map(x => {
@@ -163,7 +164,7 @@ class GraphJobs(connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
   }
 }
 
-// auxilliary Graph data structure
+//  auxilliary Graph data structure
 //  val edges: RDD[Edge] = connections.map{ case (srcId, dstId) => Edge(Vertex(srcId, None, None), Vertex(dstId, None, None))}
 //  val outlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.src).map(x => (x._1, x._2.map(e => e.dst)))
 //  val inlinks: RDD[(Vertex, Iterable[Vertex])] = edges.groupBy(edge => edge.dst).map(x => (x._1, x._2.map(e => e.src)))
@@ -178,7 +179,7 @@ class GraphJobs(connections: RDD[(Int, Int)], options: (Boolean, Boolean)) {
 //      .partitionBy(PartitionStrategy.RandomVertexCut)
 //    println(s"${graph.vertices.count()}, ${graph.edges.count()}")
 //    val triCounts = graph.triangleCount().vertices
-//    println(s"Triangle count by GraphX is ${triCounts.map(x=>x._2).sum()/3}")  // correct is 1624481
+//    println(s"Triangle count by GraphX is ${triCounts.map(x=>x._2).sum()/3}")
 
 //    V1 - Triangle counting by parallel enumerating triples (O(n^3))
 //    val (nodes, edges) = new socFileParser("/home/pietro/Desktop/Scalable and Cloud Programming/ScalaSparkProject/resources/soc-Epinions1.txt").parseIntoRDDs()
