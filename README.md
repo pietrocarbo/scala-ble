@@ -92,14 +92,14 @@ blog posts give some hints for an optimal configuration of these parameters.
         + triangles_count_V4: 577.0 seconds = 9,6 min
         + triangles_count_V4 (repartition 85): 68.0 seconds 
         + triangles_count_V4 (repartition 148): 55.0 seconds
-        + __triangles_count_V4 (repartition 148, HDFS input parallel loading): 53.0 seconds__ 
+        + __triangles_count_V4 (repartition 148, HDFS input parallel loading): 53.0 seconds__
+            + launch command `spark-submit --conf spark.dynamicAllocation.enabled=false --num-executors 17 --executor-cores 5 --executor-memory 19G ScalaSparkProject-assembly-0.1.jar --debug --outputs --partitions 148 --input soc-Epinions1.txt` 
             + trasform(2): 12 seconds
             + dynamicPageRank(8): 5 seconds
             + friends_recommendations(0): 19 seconds
 
 + Using the dataset soc-LiveJournal1.txt [4.8M nodes, 68M edges] (available from SNAP [here](https://snap.stanford.edu/data/soc-LiveJournal1.html))
     + Spark cluster of `1 master - 5 slaves` (each with 16 CPU / 16GB RAM):
-        + execution line: `spark-submit --conf spark.dynamicAllocation.enabled=false --num-executors 17 --executor-cores 5 --executor-memory 19G ScalaSparkProject-assembly-0.1.jar --debug --outputs --partitions 148 --input soc-LiveJournal1.txt`
         + trasform(2): 38 seconds
         + dynamicPageRank(8): 14 seconds
         + friends_recommendations(0): 806 seconds = 13.3 minutes
